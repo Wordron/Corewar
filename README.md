@@ -1,1 +1,2 @@
-Création de l'assembleur compilant le champion en binaire
+# Corewar
+Création de l'assembleur compilant le champion en binaire.
