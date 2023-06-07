@@ -1,0 +1,99 @@
+name: chocolatine
+
+on:
+  push:
+    branches-ignore:
+      - "ga-ignore-*"
+  pull_request:
+    branches-ignore:
+      - "ga-ignore-*"
+
+env:
+  MIRROR_URL: "git@github.com:EpitechPromo2027/B-CPE-200-NAN-2-1-corewar-camille.dumas.git"
+  EXECUTABLES: "corewar/corewar, asm/asm"
+
+jobs:
+  check_coding_style:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/epitech/coding-style-checker:latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: run coding style checker
+        run: check.sh $(pwd) $(pwd)
+      - name: check_reports
+        id: check_reports
+        continue-on-error: true
+        run: |
+          [ -s coding-style-reports.log ] || exit 0
+          exit 1
+      - name: check_errors_style
+        if: ${{ steps.check_reports.outcome == 'failure'}}
+        run: |
+            while read -r array
+            do
+              IFS=':'
+              read -a line <<< $array
+              echo "::error file=${line[0]},line=${line[1]},title=${line[2]}::${line[3]}"
+            done < "coding-style-reports.log"
+            exit 1
+
+
+  check_program_compilation:
+    needs: [check_coding_style]
+    runs-on: ubuntu-latest
+    container:
+      image: epitechcontent/epitest-docker:latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: test make
+        run: make
+        timeout-minutes: 2
+      - name: clean repo
+        run: make clean
+      - name: check executables
+        run: |
+          OIFS=$IFS
+          IFS=','
+          for i in ${{ env.EXECUTABLES }}
+          do
+            if [ ! -x i]
+            then
+              echo "::error title=Missing file::$i"
+              exit 1
+            fi
+          done
+          IFS=$OIFS
+
+  run_tests:
+    needs: [check_program_compilation]
+    runs-on: ubuntu-latest
+    container:
+      image: epitechcontent/epitest-docker:latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: start_tests
+        run: make tests_run
+        timeout-minutes: 2
+
+  push_to_mirror:
+    needs: [run_tests]
+    if: ${{ github.event_name == 'push'}}
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses : actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: mirror repo
+        uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          target_repo_url:
+            ${{ env.MIRROR_URL}}
+          ssh_private_key:
+            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
